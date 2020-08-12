@@ -1,0 +1,26 @@
+essentials:
+  command_prefix: !
+  bot_owners:
+    - Discord user
+    - Another discord user
+
+# The bot status (online, idle, do not disturb, offline) and the displayed activity (such as "playing ..." or "streaming ...")
+discord_presence:
+  # The settings for before the bot is ready and is still starting up
+  startup:
+    # possible statuses: online, idle, do not disturb, offline
+    status: idle
+    activity:
+      # possible types: game, streaming, custom
+      type: custom
+      text: booting...
+
+  # The settings for after the bot is started and is ready to accept commands
+  ready:
+    startup:
+      # possible statuses: online, idle, do not disturb, offline
+      status: online
+      activity:
+        # possible types: game, streaming, custom
+        type: custom
+        text: zoom boop!

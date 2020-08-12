@@ -1,9 +1,9 @@
 # Discord bot project template
-##### *Start your discord bot projects quicker*
+##### *Start your discord.py bot projects quicker*
 This is a template repository you may fork in order to start your discord bot project quicker. This takes care of all
 the setup and project structure for you.
 
-This template is not in a working state and currently should not be used
+Although this template currently works as intended, it is not in a completed state. See project on github page.
 
 ## Dependencies
 1. Install all python package requirements from the requirements.txt file  

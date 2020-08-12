@@ -1,3 +1,6 @@
+"""
+Core bot commands essential for built in features
+"""
 from discord.ext import commands
 import discord
 

@@ -12,21 +12,20 @@ class Config:
         self.filepath = filepath
         self.handlers = {}
         with open(self.filepath, 'r') as f:
-            self.settings = yaml.load(f)
+            self.settings = yaml.load(f, Loader=yaml.BaseLoader)
 
     def update(self, key: str, value):
         """
         handles basic key, value updates and writes changes to file immediately
         """
-        self.call(key)
+        self.update_event(key)
         self.settings[key] = value
         with open(self.filepath, "w") as f:
-            f.write(yaml.dump(f, self.settings))
+            yaml.dump(self.settings, f, yaml.Dumper)
 
-    def key_update_event(self, key: str):
+    def register_update_handler(self, key: str):
         """
-        A function decorator that adds a given function to the handlers to be used when a setting is updated
-        :param key: The key of the setting the function will be ran for on update
+        A function decorator that adds a function to the event handlers dict
         """
         def registerhandler(handler):
             if key in self.handlers:
@@ -36,16 +35,19 @@ class Config:
             return handler
         return registerhandler
 
-    def call(self, event_name):
+    def update_event(self, event_name):
         if event_name in self.handlers:
             for h in self.handlers[event_name]:
                 h()
 
 
-class MainConfig(Config):
-    """
-    used for the min config.yaml file
-    """
-    def __init__(self, client=None):
-        Config.__init__(self, "./config.yml")
-        self.client = client
+#class MainConfig(Config):
+#    """
+#    used for the min config.yaml file
+#    """
+#    def __init__(self):
+#        Config.__init__(self, "./config.yaml")
+#
+#        @self.register_update_handler(self, "foo")
+#        def foo():
+#            print("updated")

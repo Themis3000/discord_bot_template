@@ -1,13 +1,13 @@
 discord_presence:
   ready:
     activity:
-      text: zoom boop!
-      type: custom
+      text: with cats
+      type: game
     status: online
   startup:
     activity:
       text: booting...
-      type: custom
+      type: game
     status: idle
 essentials:
   bot_owners:

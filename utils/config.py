@@ -2,11 +2,23 @@
 Manages yaml config file handling
 """
 import yaml
+import discord
 
 
+converter_dict = {"online": discord.Status.online,
+                  "offline": discord.Status.offline,
+                  "idle": discord.Status.idle,
+                  "dnd": discord.Status.dnd,
+                  "invisible": discord.Status.invisible,
+                  "game": discord.Game,
+                  "streaming": discord.Streaming,
+                  "custom": discord.CustomActivity}
+
+
+# todo add __dict__ magic statement possibly with converting built in
 class Config:
     """
-    A very basic yaml file handler class, made to be used as a parent class the key_update_event decorator can be utilized
+    A very basic yaml file handler class
     """
     def __init__(self, filepath):
         self.filepath = filepath
@@ -39,15 +51,3 @@ class Config:
         if event_name in self.handlers:
             for h in self.handlers[event_name]:
                 h()
-
-
-#class MainConfig(Config):
-#    """
-#    used for the min config.yaml file
-#    """
-#    def __init__(self):
-#        Config.__init__(self, "./config.yaml")
-#
-#        @self.register_update_handler(self, "foo")
-#        def foo():
-#            print("updated")

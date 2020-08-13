@@ -1,10 +1,9 @@
 discord_presence:
   ready:
-    startup:
-      activity:
-        text: zoom boop!
-        type: custom
-      status: online
+    activity:
+      text: zoom boop!
+      type: custom
+    status: online
   startup:
     activity:
       text: booting...
@@ -14,5 +13,4 @@ essentials:
   bot_owners:
   - Discord user
   - Another discord user
-  command_prefix: !
-test: test val
+  command_prefix: "!"

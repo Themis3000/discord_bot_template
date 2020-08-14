@@ -3,7 +3,18 @@
 This is a template repository you may fork in order to start your discord bot project quicker. This takes care of all
 the setup and project structure for you.
 
-Although this template currently works as intended, it is not in a completed state. See project on github page.
+Although this template currently works as intended, it is not in a completed state. All crossed out features are
+currently not implemented.
+
+## Features list
+- Nice and modern discord rewrite class based file structure (notice the cogs folder)
+- Clean, commented, and easy to understand code
+- Built in config file that is easily modifiable and has easy to write type conversions for less verbose config calls
+- Useful already built in functions in utils folder
+- Built in basic commands, such as ping, help, ~~and common admin commands~~
+- Auto generating help text for failed commands showing intended syntax
+- ~~Built in song bot functionality, because it's never a complete bot without music and it's a pain of a feature to add~~
+- ~~Built in per-user sql lite database, so you can easily store user to user data~~
 
 ## Dependencies
 1. Install all python package requirements from the requirements.txt file  

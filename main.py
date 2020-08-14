@@ -1,20 +1,18 @@
 import os
 from discord.ext import commands
-from utils.config import Config, converter_dict
-
-config = Config("config.yaml")
+from utils.main_config import config
 
 # todo make these config calls less verbose
-client = commands.Bot(command_prefix=config.settings["essentials"]["command_prefix"],
-                      status=converter_dict[config.settings["discord_presence"]["startup"]["status"]],
-                      activity=converter_dict[config.settings["discord_presence"]["startup"]["activity"]["type"]](name=config.settings["discord_presence"]["startup"]["activity"]["text"]))
+client = commands.Bot(command_prefix=config["essentials.command_prefix"],
+                      status=config["discord_presence.startup.status"],
+                      activity=config["discord_presence.startup.activity"])
 
 
 @client.event
 async def on_ready():
     print("Startup complete")
-    await client.change_presence(status=converter_dict[config.settings["discord_presence"]["ready"]["status"]],
-                                 activity=converter_dict[config.settings["discord_presence"]["startup"]["activity"]["type"]](name=config.settings["discord_presence"]["ready"]["activity"]["text"]))
+    await client.change_presence(status=config["discord_presence.ready.status"],
+                                 activity=config["discord_presence.ready.activity"])
 
 
 for file in os.listdir("cogs"):

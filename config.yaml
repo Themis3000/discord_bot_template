@@ -10,7 +10,4 @@ discord_presence:
       type: game
     status: idle
 essentials:
-  bot_owners:
-  - Discord user
-  - Another discord user
   command_prefix: "!"

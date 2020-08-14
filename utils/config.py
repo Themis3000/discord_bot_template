@@ -2,20 +2,8 @@
 Manages yaml config file handling
 """
 import yaml
-import discord
 
 
-converter_dict = {"online": discord.Status.online,
-                  "offline": discord.Status.offline,
-                  "idle": discord.Status.idle,
-                  "dnd": discord.Status.dnd,
-                  "invisible": discord.Status.invisible,
-                  "game": discord.Game,
-                  "streaming": discord.Streaming,
-                  "custom": discord.CustomActivity}
-
-
-# todo add __dict__ magic statement possibly with converting built in
 class Config:
     """
     A very basic yaml file handler class
@@ -26,28 +14,29 @@ class Config:
         with open(self.filepath, 'r') as f:
             self.settings = yaml.load(f, Loader=yaml.BaseLoader)
 
-    def update(self, key: str, value):
+    def __getitem__(self, key):
         """
-        handles basic key, value updates and writes changes to file immediately
-        """
-        self.update_event(key)
-        self.settings[key] = value
-        with open(self.filepath, "w") as f:
-            yaml.dump(self.settings, f, yaml.Dumper)
+        Get key processed through any get handlers if they exist for a given path. pass key in as if it where accessing
+        yaml file as a flattened nested dict with a . as the separator
+        e.g.
+        instead of calling Config['setting']['subsetting']
+        you would call Config['setting.subsetting']
 
-    def register_update_handler(self, key: str):
+        If you wish to get raw settings dict without any processing, use Config.settings
         """
-        A function decorator that adds a function to the event handlers dict
+        path = key.split(".")
+        _dict = self.settings
+        for _key in path:
+            _dict = _dict[_key]
+        if key in self.handlers:
+            return self.handlers[key](_dict)
+        return _dict
+
+    def register_get_handler(self, key):
+        """
+        A decorator that registers a function to be used for modifying the output of a __getitem__ call
         """
         def registerhandler(handler):
-            if key in self.handlers:
-                self.handlers[key].append(handler)
-            else:
-                self.handlers[key] = [handler]
+            self.handlers[key] = handler
             return handler
         return registerhandler
-
-    def update_event(self, event_name):
-        if event_name in self.handlers:
-            for h in self.handlers[event_name]:
-                h()

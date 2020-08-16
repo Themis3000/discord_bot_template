@@ -1,2 +1,4 @@
 discord.py[voice]
 pyyaml
+youtube-dl
+youtube-search

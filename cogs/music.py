@@ -8,27 +8,39 @@ from utils.bot import BotUtils
 
 
 class Song:
-    """Signifies a single song"""
-    def __init__(self, url, name, duration, adder=None, preload=False):
+    """A single song"""
+    def __init__(self, url, name, duration, adder=None):
         self.url = url
         self.name = name
         self.duration = duration
         self.adder = adder
         self.data = None
-        if preload:
-            self.load_song()
 
-    def load_song(self):
-        """Loads the song into memory to avoid steaming cutouts (not implemented)"""
-        self.data = None
+
+class Player:
+    """
+    A single player
+
+    Players are treated as disposable (one created per each song)
+    """
+    def __init__(self, voice_client, song: Song):
+        self.voice_client = voice_client
+        self.song = song
+        self.ytdl_player = await voice_client.create_ytdl_player(song.url)
 
 
 class Queue:
-    """Signifies a single queue"""
+    """A single queue"""
     def __init__(self):
         self.songs = deque()
-        self.playing = False
-        self.current_song = None
+        self.player = None
+
+    def play(self, song: Song, voice_client):
+        pass
+
+    def execute_queue(self, voice_client):
+        song = self.pop_left()
+        self.play(song, voice_client)
 
     def pop_left(self) -> Song:
         """Removes the next up song from the queue and also returns it"""
@@ -42,32 +54,36 @@ class Queue:
         """Adds a song to the front of the queue"""
         self.songs.appendleft(song)
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Gets the item length of the queue (as opposed to time length)"""
-        self.songs.__len__()
-
-
-def dict_to_song(search_dict: dict, author: discord.user) -> Song:
-    """Converts the dictionary provided by youtubesearchpython to a Song object"""
-    return Song(search_dict['link'],
-                search_dict['title'],
-                search_dict['duration'],
-                author)
+        return len(self.songs)
 
 
 class Queues:
     def __init__(self):
         self.guilds = {}
 
-    def __getitem__(self, guild_id: str) -> Queue:
+    def __getitem__(self, guild: discord.Guild) -> Queue:
         """Gets the queue for a given guild. If none exists, one if created"""
-        if guild_id not in self.guilds:
-            self.guilds[guild_id] = Queue()
-        return self.guilds[guild_id]
+        if guild.id not in self.guilds:
+            self.guilds[guild.id] = Queue()
+        return self.guilds[guild.id]
 
-    def remove_queue(self, guild_id: str):
+    def remove_queue(self, guild: discord.Guild):
         """Removes a given guild's queue"""
-        del self.guilds[guild_id]
+        del self.guilds[guild.id]
+
+    def __delitem__(self, guild: discord.Guild):
+        """Removes a given guild's queue"""
+        self.remove_queue(guild)
+
+
+def dict_to_song(search_dict: dict, author: discord.User) -> Song:
+    """Converts the dictionary provided by youtubesearchpython to a Song object"""
+    return Song(search_dict['link'],
+                search_dict['title'],
+                search_dict['duration'],
+                author)
 
 
 queues = Queues()
@@ -104,12 +120,12 @@ class Music(commands.Cog):
         return await message.edit(content=f":white_check_mark: Added `{song_name}` to the queue")
 
     @staticmethod
-    def add_to_queue(guildId, song, add_to_start=False):
+    def add_to_queue(guild: discord.Guild, song, add_to_start=False):
         """Adds a song to a given guild's queue"""
         if add_to_start:
-            queues[guildId].add_song_next(song)
+            queues[guild].add_song_next(song)
             return
-        queues[guildId].add_song(song)
+        queues[guild].add_song(song)
 
     @staticmethod
     def get_query(ctx: discord.ext.commands.Context) -> str:
@@ -141,7 +157,7 @@ class Music(commands.Cog):
 
             # add song to queue and send standard added to queue message
             await self.add_to_queue_message(message, song.name)
-            self.add_to_queue(ctx.guild.id, song, ctx.invoked_with in ["nextsearch", "searchnext"])
+            self.add_to_queue(ctx.guild, song, ctx.invoked_with in ["nextsearch", "searchnext"])
 
     @commands.command(aliases=["nextplay", "playnext"])
     async def play(self, ctx):
@@ -162,7 +178,7 @@ class Music(commands.Cog):
 
             for video in videos:
                 song = dict_to_song(video, ctx.author)
-                self.add_to_queue(ctx.guild.id, song, add_to_start)
+                self.add_to_queue(ctx.guild, song, add_to_start)
 
             await message.edit(content=f":white_check_mark: Added a playlist with {len(videos)} songs to the queue")
 
@@ -173,12 +189,17 @@ class Music(commands.Cog):
 
         # add song to queue and send standard added to queue message
         await self.add_to_queue_message(message, song.name)
-        self.add_to_queue(ctx.guild.id, song, ctx.invoked_with in ["nextplay", "playnext"])
+        self.add_to_queue(ctx.guild, song, ctx.invoked_with in ["nextplay", "playnext"])
 
     @commands.command()
     async def queue(self, ctx):
         """Displays the server's song queue"""
-        queue = queues[ctx.guild.id]
+        queue = queues[ctx.guild]
+
+        if len(queue) == 0:
+            await ctx.send(":x: The queue is currently empty")
+            return
+
         message_text = "Song queue:\n"
         for i, song in enumerate(queue.songs):
             message_text += f"{i+1}. `{song.duration}` {song.name}\n"
@@ -187,14 +208,14 @@ class Music(commands.Cog):
     @commands.command()
     async def clearqueue(self, ctx):
         """Clears a guild's queue"""
-        queues.remove_queue(ctx.guild.id)
+        queues.remove_queue(ctx.guild)
         await ctx.send(":white_check_mark: Cleared the queue")
 
     @commands.command()
     async def stop(self, ctx):
         """disconnects from current voice channel"""
         await ctx.voice_client.disconnect()
-        queues.remove_queue(ctx.guild.id)
+        queues.remove_queue(ctx.guild)
 
 
 def setup(bot):

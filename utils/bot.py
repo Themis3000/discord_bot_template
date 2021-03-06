@@ -23,6 +23,7 @@ class BotUtils(commands.Cog):
 
         try:
             reaction, sender = await bot.wait_for('reaction_add', timeout=timeout, check=check)
+            await message.clear_reactions()
         except:
             return None, None
         else:

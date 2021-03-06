@@ -1,3 +1,6 @@
+import asyncio
+
+import youtube_dl
 from youtubesearchpython import VideosSearch, Playlist
 from discord.ext import commands
 import discord
@@ -5,6 +8,49 @@ from collections import deque
 
 from utils.emoji import from_numbers
 from utils.bot import BotUtils
+
+
+ytdl_format_options = {
+    'format': 'bestaudio/best',
+    'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+    'restrictfilenames': True,
+    'noplaylist': True,
+    'nocheckcertificate': True,
+    'ignoreerrors': False,
+    'logtostderr': False,
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'auto',
+    'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
+}
+
+ffmpeg_options = {
+    'options': '-vn'
+}
+
+ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+
+
+class YTDLSource(discord.PCMVolumeTransformer):
+    def __init__(self, source, *, data, volume=0.5):
+        super().__init__(source, volume)
+
+        self.data = data
+
+        self.title = data.get('title')
+        self.url = data.get('url')
+
+    @classmethod
+    async def from_url(cls, url, *, loop=None, stream=False):
+        loop = loop or asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+
+        if 'entries' in data:
+            # take first item from a playlist
+            data = data['entries'][0]
+
+        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
 
 
 class Song:
@@ -17,42 +63,40 @@ class Song:
         self.data = None
 
 
-class Player:
-    """
-    A single player
-
-    Players are treated as disposable (one created per each song)
-    """
-    def __init__(self, voice_client, song: Song):
-        self.voice_client = voice_client
-        self.song = song
-        self.ytdl_player = await voice_client.create_ytdl_player(song.url)
-
-
 class Queue:
     """A single queue"""
     def __init__(self):
         self.songs = deque()
-        self.player = None
 
-    def play(self, song: Song, voice_client):
-        pass
+    async def play_song(self, song: Song, voice_client, after=None):
+        player = await self.create_player(song)
+        voice_client.play(player, after=after)
 
-    def execute_queue(self, voice_client):
-        song = self.pop_left()
-        self.play(song, voice_client)
+    @staticmethod
+    async def create_player(song: Song):
+        return await YTDLSource.from_url(song.url, stream=True)
+
+    async def execute_queue(self, voice_client):
+        if self.__len__() > 0 and voice_client is not None:
+            song = self.pop_left()
+            await self.play_song(song, voice_client, lambda e: self.execute_queue(voice_client))
 
     def pop_left(self) -> Song:
         """Removes the next up song from the queue and also returns it"""
         return self.songs.popleft()
 
-    def add_song(self, song: Song):
-        """Adds a song to the end of the queue"""
-        self.songs.append(song)
+    async def play_if_stopped(self, voice_client):
+        if voice_client is None:
+            return
+        if not voice_client.is_playing():
+            await self.execute_queue(voice_client)
 
-    def add_song_next(self, song: Song):
-        """Adds a song to the front of the queue"""
-        self.songs.appendleft(song)
+    def add_song(self, song: Song, start=False):
+        """Adds a song to the queue"""
+        if start:
+            self.songs.appendleft(song)
+            return
+        self.songs.append(song)
 
     def __len__(self) -> int:
         """Gets the item length of the queue (as opposed to time length)"""
@@ -71,7 +115,10 @@ class Queues:
 
     def remove_queue(self, guild: discord.Guild):
         """Removes a given guild's queue"""
-        del self.guilds[guild.id]
+        try:
+            self.guilds.pop(guild.id)
+        except KeyError:
+            pass
 
     def __delitem__(self, guild: discord.Guild):
         """Removes a given guild's queue"""
@@ -120,12 +167,11 @@ class Music(commands.Cog):
         return await message.edit(content=f":white_check_mark: Added `{song_name}` to the queue")
 
     @staticmethod
-    def add_to_queue(guild: discord.Guild, song, add_to_start=False):
+    async def queue_and_unpause(guild: discord.Guild, song, add_to_start):
         """Adds a song to a given guild's queue"""
-        if add_to_start:
-            queues[guild].add_song_next(song)
-            return
-        queues[guild].add_song(song)
+        queue = queues[guild]
+        queue.add_song(song, add_to_start)
+        await queue.play_if_stopped(guild.voice_client)
 
     @staticmethod
     def get_query(ctx: discord.ext.commands.Context) -> str:
@@ -157,7 +203,7 @@ class Music(commands.Cog):
 
             # add song to queue and send standard added to queue message
             await self.add_to_queue_message(message, song.name)
-            self.add_to_queue(ctx.guild, song, ctx.invoked_with in ["nextsearch", "searchnext"])
+            await self.queue_and_unpause(ctx.guild, song, ctx.invoked_with in ["nextsearch", "searchnext"])
 
     @commands.command(aliases=["nextplay", "playnext"])
     async def play(self, ctx):
@@ -178,7 +224,7 @@ class Music(commands.Cog):
 
             for video in videos:
                 song = dict_to_song(video, ctx.author)
-                self.add_to_queue(ctx.guild, song, add_to_start)
+                await self.queue_and_unpause(ctx.guild, song, add_to_start)
 
             await message.edit(content=f":white_check_mark: Added a playlist with {len(videos)} songs to the queue")
 
@@ -189,7 +235,7 @@ class Music(commands.Cog):
 
         # add song to queue and send standard added to queue message
         await self.add_to_queue_message(message, song.name)
-        self.add_to_queue(ctx.guild, song, ctx.invoked_with in ["nextplay", "playnext"])
+        await self.queue_and_unpause(ctx.guild, song, ctx.invoked_with in ["nextplay", "playnext"])
 
     @commands.command()
     async def queue(self, ctx):

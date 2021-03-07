@@ -156,18 +156,19 @@ class Music(commands.Cog):
     @commands.command()
     async def join(self, ctx: discord.ext.commands.Context):
         """Joins a voice channel"""
-        voicestate = ctx.author.voice
+        user_voice_state = ctx.author.voice
+
         # if the sender is in a voice channel
-        if voicestate is not None:
-            # if the bot is in a voice channel
-            if ctx.voice_client is not None:
-                # if the bot is not in the same voice channel as the user
-                if ctx.voice_client.channel != voicestate.channel:
-                    return await ctx.voice_client.move_to(voicestate.channel)
-            else:
-                await voicestate.channel.connect()
-        else:
+        if user_voice_state is None:
             await ctx.send("You must be in a voice channel")
+            return
+
+        # if the bot is in a voice channel and the bot is not in the same voice channel as the user
+        if ctx.voice_client is not None and ctx.voice_client.channel != user_voice_state.channel:
+            await ctx.voice_client.move_to(user_voice_state.channel)
+            return
+
+        await user_voice_state.channel.connect()
 
     @staticmethod
     async def searching_message(ctx: discord.ext.commands.Context, query: str) -> discord.Message:
@@ -243,7 +244,6 @@ class Music(commands.Cog):
 
         if query.startswith("https://www.youtube.com/watch?v="):
             video_result = Video.get(query)
-            print(video_result)
             video_result["duration"] = convert_millis_str(int(video_result["streamingData"]["formats"][0]["approxDurationMs"]))
         else:
             video_result = VideosSearch(query, limit=1).result()["result"][0]

@@ -1,12 +1,13 @@
 import asyncio
 import youtube_dl
-from youtubesearchpython import VideosSearch, Playlist
+from youtubesearchpython import VideosSearch, Playlist, Video
 from discord.ext import commands
 import discord
 from collections import deque
 
 from utils.emoji import from_numbers
 from utils.bot import BotUtils
+from utils.time import convert_millis_str
 
 
 ytdl_format_options = {
@@ -153,7 +154,7 @@ class Music(commands.Cog):
         self.queues = Queues(bot)
 
     @commands.command()
-    async def join(self, ctx):
+    async def join(self, ctx: discord.ext.commands.Context):
         """Joins a voice channel"""
         voicestate = ctx.author.voice
         # if the sender is in a voice channel
@@ -189,7 +190,7 @@ class Music(commands.Cog):
         return ctx.message.content[len(ctx.invoked_with) + 2:]
 
     @commands.command(aliases=["nextsearch", "searchnext"])
-    async def search(self, ctx):
+    async def search(self, ctx: discord.ext.commands.Context):
         """Searches and plays a song from youtube"""
         # get song query
         query = self.get_query(ctx)
@@ -217,7 +218,7 @@ class Music(commands.Cog):
             await self.queue_and_unpause(ctx.guild, song, ctx.invoked_with in ["nextsearch", "searchnext"])
 
     @commands.command(aliases=["nextplay", "playnext"])
-    async def play(self, ctx):
+    async def play(self, ctx: discord.ext.commands.Context):
         """Plays a song from youtube"""
         query = self.get_query(ctx)
 
@@ -238,18 +239,37 @@ class Music(commands.Cog):
                 await self.queue_and_unpause(ctx.guild, song, add_to_start)
 
             await message.edit(content=f":white_check_mark: Added a playlist with {len(videos)} songs to the queue")
-
             return
 
-        video_result = VideosSearch(query, limit=1).result()['result'][0]
+        if query.startswith("https://www.youtube.com/watch?v="):
+            video_result = Video.get(query)
+            print(video_result)
+            video_result["duration"] = convert_millis_str(int(video_result["streamingData"]["formats"][0]["approxDurationMs"]))
+        else:
+            video_result = VideosSearch(query, limit=1).result()["result"][0]
+
         song = dict_to_song(video_result, ctx.author)
 
         # add song to queue and send standard added to queue message
         await self.add_to_queue_message(message, song.name)
         await self.queue_and_unpause(ctx.guild, song, ctx.invoked_with in ["nextplay", "playnext"])
 
+    @commands.command(aliases=["unplay", "deplay"])
+    async def pause(self, ctx: discord.ext.commands.Context):
+        voice_client = ctx.voice_client
+        if voice_client.is_playing():
+            voice_client.pause()
+            await ctx.send(":pause_button: **Paused**")
+
+    @commands.command(aliases=["unpause", "depause"])
+    async def resume(self, ctx: discord.ext.commands.Context):
+        voice_client = ctx.voice_client
+        if voice_client.is_paused():
+            voice_client.resume()
+            await ctx.send(":play_pause: **Resuming**")
+
     @commands.command()
-    async def queue(self, ctx):
+    async def queue(self, ctx: discord.ext.commands.Context):
         """Displays the server's song queue"""
         queue = self.queues[ctx.guild]
 
@@ -262,14 +282,14 @@ class Music(commands.Cog):
             message_text += f"{i+1}. `{song.duration}` {song.name}\n"
         await ctx.send(message_text)
 
-    @commands.command()
-    async def clearqueue(self, ctx):
+    @commands.command(aliases=["queueclear"])
+    async def clearqueue(self, ctx: discord.ext.commands.Context):
         """Clears a guild's queue"""
         self.queues.remove_queue(ctx.guild)
         await ctx.send(":white_check_mark: Cleared the queue")
 
     @commands.command(aliases=["leave"])
-    async def stop(self, ctx):
+    async def stop(self, ctx: discord.ext.commands.Context):
         """disconnects from current voice channel"""
         await ctx.voice_client.disconnect()
         self.queues.remove_queue(ctx.guild)

@@ -277,10 +277,8 @@ class Music(commands.Cog):
             await ctx.send(":x: The queue is currently empty")
             return
 
-        message_text = "Song queue:\n"
-        for i, song in enumerate(queue.songs):
-            message_text += f"{i+1}. `{song.duration}` {song.name}\n"
-        await ctx.send(message_text)
+        queue_readable = [f"{i+1}. `{song.duration}` {song.name}" for i, song in enumerate(queue.songs)]
+        await BotUtils.pagination_reaction_menu(ctx, self.bot, queue_readable, 10, "Song queue:")
 
     @commands.command(aliases=["queueclear"])
     async def clearqueue(self, ctx: discord.ext.commands.Context):

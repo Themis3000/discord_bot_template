@@ -1,5 +1,4 @@
 import asyncio
-
 import youtube_dl
 from youtubesearchpython import VideosSearch, Playlist
 from discord.ext import commands
@@ -65,21 +64,35 @@ class Song:
 
 class Queue:
     """A single queue"""
-    def __init__(self):
+    def __init__(self, bot):
         self.songs = deque()
+        self.bot = bot
 
     async def play_song(self, song: Song, voice_client, after=None):
         player = await self.create_player(song)
-        voice_client.play(player, after=after)
+        if after is not None:
+            voice_client.play(player, after=after)
+            return
+        voice_client.play(player)
 
-    @staticmethod
-    async def create_player(song: Song):
-        return await YTDLSource.from_url(song.url, stream=True)
+    async def create_player(self, song: Song):
+        return await YTDLSource.from_url(song.url, stream=True, loop=self.bot.loop)
 
     async def execute_queue(self, voice_client):
+
+        def after(e=None):
+            if e is not None:
+                print(f"An error occurred while playing: {e}")
+            coro = self.execute_queue(voice_client)
+            fut = asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
+            try:
+                fut.result()
+            except Exception as e:
+                print(f"The following error occurred while trying to call the after function: {e}")
+
         if self.__len__() > 0 and voice_client is not None:
             song = self.pop_left()
-            await self.play_song(song, voice_client, lambda e: self.execute_queue(voice_client))
+            await self.play_song(song, voice_client, after)
 
     def pop_left(self) -> Song:
         """Removes the next up song from the queue and also returns it"""
@@ -104,13 +117,14 @@ class Queue:
 
 
 class Queues:
-    def __init__(self):
+    def __init__(self, bot):
         self.guilds = {}
+        self.bot = bot
 
     def __getitem__(self, guild: discord.Guild) -> Queue:
         """Gets the queue for a given guild. If none exists, one if created"""
         if guild.id not in self.guilds:
-            self.guilds[guild.id] = Queue()
+            self.guilds[guild.id] = Queue(self.bot)
         return self.guilds[guild.id]
 
     def remove_queue(self, guild: discord.Guild):
@@ -133,12 +147,10 @@ def dict_to_song(search_dict: dict, author: discord.User) -> Song:
                 author)
 
 
-queues = Queues()
-
-
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.queues = Queues(bot)
 
     @commands.command()
     async def join(self, ctx):
@@ -166,10 +178,9 @@ class Music(commands.Cog):
         """Edits a discord message to the one used universally specifying that a song was added to the queue"""
         return await message.edit(content=f":white_check_mark: Added `{song_name}` to the queue")
 
-    @staticmethod
-    async def queue_and_unpause(guild: discord.Guild, song, add_to_start):
+    async def queue_and_unpause(self, guild: discord.Guild, song, add_to_start):
         """Adds a song to a given guild's queue"""
-        queue = queues[guild]
+        queue = self.queues[guild]
         queue.add_song(song, add_to_start)
         await queue.play_if_stopped(guild.voice_client)
 
@@ -240,7 +251,7 @@ class Music(commands.Cog):
     @commands.command()
     async def queue(self, ctx):
         """Displays the server's song queue"""
-        queue = queues[ctx.guild]
+        queue = self.queues[ctx.guild]
 
         if len(queue) == 0:
             await ctx.send(":x: The queue is currently empty")
@@ -254,14 +265,14 @@ class Music(commands.Cog):
     @commands.command()
     async def clearqueue(self, ctx):
         """Clears a guild's queue"""
-        queues.remove_queue(ctx.guild)
+        self.queues.remove_queue(ctx.guild)
         await ctx.send(":white_check_mark: Cleared the queue")
 
-    @commands.command()
+    @commands.command(aliases=["leave"])
     async def stop(self, ctx):
         """disconnects from current voice channel"""
         await ctx.voice_client.disconnect()
-        queues.remove_queue(ctx.guild)
+        self.queues.remove_queue(ctx.guild)
 
 
 def setup(bot):

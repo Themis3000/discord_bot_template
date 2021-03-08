@@ -6,6 +6,7 @@ import discord
 from collections import deque
 from typing import Union
 import os
+import random
 
 from utils.emoji import from_numbers
 from utils.bot import BotUtils
@@ -135,6 +136,11 @@ class Queue:
             self.songs.appendleft(song)
             return
         self.songs.append(song)
+
+    def shuffle(self):
+        song_list = list(self.songs)
+        random.shuffle(song_list)
+        self.songs = deque(song_list)
 
     def __len__(self) -> int:
         """Gets the item length of the queue (as opposed to time length)"""
@@ -355,6 +361,12 @@ class Music(commands.Cog):
         """Tells what song is currently playing"""
         song = self.queues[ctx.guild].playing
         await ctx.send(f"Currently playing `{song.name}` ({song.duration})")
+
+    @commands.command(aliases=["mixitupinherebro"])
+    async def shuffle(self, ctx):
+        """shuffles the queue"""
+        self.queues[ctx.guild].shuffle()
+        await ctx.send(f":twisted_rightwards_arrows: Shuffled the queue")
 
 
 def setup(bot):

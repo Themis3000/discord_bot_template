@@ -1,15 +1,19 @@
 """Includes useful utilities for time based operations"""
+from datetime import datetime, timezone
+import time
 
 
-def convert_millis(millis):
-    seconds = (millis / 1000) % 60
-    minutes = (millis / (1000 * 60)) % 60
-    hours = (millis / (1000 * 60 * 60)) % 24
-    return seconds, minutes, hours
+def convert_millis_readable(millis: int):
+    seconds = millis // 1000
+    if seconds >= 3600:
+        time_str = time.strftime("%H:%M:%S", time.gmtime(seconds))
+    else:
+        time_str = time.strftime("%M:%S", time.gmtime(seconds))
+    if time_str.startswith("0"):
+        return time_str[1:]
+    return time_str
 
 
-def convert_millis_str(millis):
-    seconds, minutes, hours = convert_millis(millis)
-    if hours > 0:
-        return f"{hours}:{minutes}:{seconds}"
-    return f"{minutes}:{seconds}"
+def get_current_milliseconds():
+    dt = datetime.now(timezone.utc).replace(tzinfo=timezone.utc)
+    return dt.timestamp() / 1000

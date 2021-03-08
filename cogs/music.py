@@ -4,15 +4,19 @@ from youtubesearchpython import VideosSearch, Playlist, Video
 from discord.ext import commands
 import discord
 from collections import deque
+from typing import Union
+import os
 
 from utils.emoji import from_numbers
 from utils.bot import BotUtils
-from utils.time import convert_millis_str
+from utils.time import convert_millis_readable
+from utils.spotify import Spotify
 
+spotify = Spotify()
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
-    'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+    'outtmpl': 'TEMP-%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
     'nocheckcertificate': True,
@@ -50,17 +54,31 @@ class YTDLSource(discord.PCMVolumeTransformer):
             data = data['entries'][0]
 
         filename = data['url'] if stream else ytdl.prepare_filename(data)
-        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data), filename
 
 
 class Song:
     """A single song"""
-    def __init__(self, url, name, duration, adder=None):
+    def __init__(self, url, name, duration, adder: discord.abc.User = None):
         self.url = url
         self.name = name
         self.duration = duration
         self.adder = adder
-        self.data = None
+
+
+class UnloadedSong:
+    """Unloaded song, ready to load a song object on demand"""
+    def __init__(self, name: str, duration: str, yt_query: str, adder: discord.abc.User = None):
+        self.name = name
+        self.duration = duration
+        self.yt_query = yt_query
+        self.adder = adder
+
+    def load_song(self) -> Song:
+        """Loads song, returning a song object"""
+        video_result = VideosSearch(self.yt_query, limit=1).result()["result"][0]
+        song = dict_to_song(video_result, self.adder)
+        return song
 
 
 class Queue:
@@ -68,32 +86,38 @@ class Queue:
     def __init__(self, bot):
         self.songs = deque()
         self.bot = bot
+        self.playing = None
 
-    async def play_song(self, song: Song, voice_client, after=None):
-        player = await self.create_player(song)
-        if after is not None:
-            voice_client.play(player, after=after)
-            return
-        voice_client.play(player)
+    async def create_player(self, song: Union[Song, UnloadedSong]):
+        # If the song is unloaded, load it
+        if isinstance(song, UnloadedSong):
+            song = song.load_song()
+        return await YTDLSource.from_url(song.url, loop=self.bot.loop, stream=True)
 
-    async def create_player(self, song: Song):
-        return await YTDLSource.from_url(song.url, stream=True, loop=self.bot.loop)
-
-    async def execute_queue(self, voice_client):
-
-        def after(e=None):
-            if e is not None:
-                print(f"An error occurred while playing: {e}")
-            coro = self.execute_queue(voice_client)
-            fut = asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
-            try:
-                fut.result()
-            except Exception as e:
-                print(f"The following error occurred while trying to call the after function: {e}")
+    async def execute_queue_loop(self, voice_client):
+        """Loop that executes it's way through the queue, playing every song"""
 
         if self.__len__() > 0 and voice_client is not None:
             song = self.pop_left()
-            await self.play_song(song, voice_client, after)
+            player, filename = await self.create_player(song)
+
+            def after(e=None):
+                self.playing = None
+
+                if not filename.startswith("http"):
+                    os.remove(filename)
+
+                if e is not None:
+                    print(f"An error occurred while playing: {e}")
+                coro = self.execute_queue_loop(voice_client)
+                fut = asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
+                try:
+                    fut.result()
+                except Exception as e:
+                    print(f"The following error occurred while trying to call the after function: {e}")
+
+            voice_client.play(player, after=after)
+            self.playing = song
 
     def pop_left(self) -> Song:
         """Removes the next up song from the queue and also returns it"""
@@ -103,9 +127,9 @@ class Queue:
         if voice_client is None:
             return
         if not voice_client.is_playing():
-            await self.execute_queue(voice_client)
+            await self.execute_queue_loop(voice_client)
 
-    def add_song(self, song: Song, start=False):
+    def add_song(self, song: Union[Song, UnloadedSong], start=False):
         """Adds a song to the queue"""
         if start:
             self.songs.appendleft(song)
@@ -222,6 +246,7 @@ class Music(commands.Cog):
     async def play(self, ctx: discord.ext.commands.Context):
         """Plays a song from youtube"""
         query = self.get_query(ctx)
+        add_to_start = ctx.invoked_with in ["nextplay", "playnext"]
 
         message = await self.searching_message(ctx, query)
 
@@ -229,7 +254,6 @@ class Music(commands.Cog):
         if query.startswith("https://www.youtube.com/playlist?list="):
             playlist = Playlist.getVideos(query)
             videos = playlist["videos"]
-            add_to_start = ctx.invoked_with in ["nextplay", "playnext"]
 
             # insures that videos are put in the correct order when inserted to the front of the queue
             if add_to_start:
@@ -239,12 +263,34 @@ class Music(commands.Cog):
                 song = dict_to_song(video, ctx.author)
                 await self.queue_and_unpause(ctx.guild, song, add_to_start)
 
-            await message.edit(content=f":white_check_mark: Added a playlist with {len(videos)} songs to the queue")
+            await message.edit(content=f":white_check_mark: Added a Youtube playlist with {len(videos)} songs to the queue")
             return
 
+        # handles for when a spotify playlist is passed in
+        if query.startswith("https://open.spotify.com/playlist/"):
+            playlist = spotify.get_playlist_tracks(query)["items"]
+
+            if add_to_start:
+                playlist.reverse()
+
+            for spotify_song in playlist:
+                track = spotify_song["track"]
+                song_name = track["name"]
+                duration = convert_millis_readable(int(track["duration_ms"]))
+                artist = track["artists"][0]["name"]
+                yt_query = f"{artist} {song_name}"
+                unloaded_song = UnloadedSong(song_name, duration, yt_query, ctx.author)
+                await self.queue_and_unpause(ctx.guild, unloaded_song, add_to_start)
+
+            await message.edit(content=f":white_check_mark: Added a Spotify playlist with {len(playlist)} songs to the queue")
+            return
+
+        # handles for when a youtube link is passed in
         if query.startswith("https://www.youtube.com/watch?v="):
             video_result = Video.get(query)
-            video_result["duration"] = convert_millis_str(int(video_result["streamingData"]["formats"][0]["approxDurationMs"]))
+            # adapts the resulting dict so that it's compatible with dict_to_song
+            video_result["duration"] = convert_millis_readable(int(video_result["streamingData"]["formats"][0]["approxDurationMs"]))
+        # handles for when a text search is passed in
         else:
             video_result = VideosSearch(query, limit=1).result()["result"][0]
 
@@ -252,7 +298,7 @@ class Music(commands.Cog):
 
         # add song to queue and send standard added to queue message
         await self.add_to_queue_message(message, song.name)
-        await self.queue_and_unpause(ctx.guild, song, ctx.invoked_with in ["nextplay", "playnext"])
+        await self.queue_and_unpause(ctx.guild, song, add_to_start)
 
     @commands.command(aliases=["unplay", "deplay"])
     async def pause(self, ctx: discord.ext.commands.Context):
@@ -289,8 +335,26 @@ class Music(commands.Cog):
     @commands.command(aliases=["leave"])
     async def stop(self, ctx: discord.ext.commands.Context):
         """disconnects from current voice channel"""
+        if not ctx.voice_client:
+            return
+
+        if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
+            ctx.voice_client.stop()
+
         await ctx.voice_client.disconnect()
         self.queues.remove_queue(ctx.guild)
+
+    @commands.command()
+    async def skip(self, ctx):
+        """skips the current song"""
+        ctx.voice_client.stop()
+        await ctx.send(":track_next: Skipped this song")
+
+    @commands.command()
+    async def playing(self, ctx):
+        """Tells what song is currently playing"""
+        song = self.queues[ctx.guild].playing
+        await ctx.send(f"Currently playing `{song.name}` ({song.duration})")
 
 
 def setup(bot):

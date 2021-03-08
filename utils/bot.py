@@ -19,7 +19,7 @@ class BotUtils(commands.Cog):
             reactions.append(reaction)
 
         def check(reaction, sender):
-            return sender == allowed_responder and str(reaction.emoji) in reactions
+            return sender == allowed_responder and str(reaction.emoji) in reactions and reaction.message.id == message.id
 
         try:
             reaction, sender = await bot.wait_for('reaction_add', timeout=timeout, check=check)
@@ -55,7 +55,7 @@ class BotUtils(commands.Cog):
             await message.edit(content=render_page())
 
         def check(reaction, sender):
-            return sender == allowed_responder and str(reaction.emoji) in ["▶", "◀"]
+            return sender == allowed_responder and str(reaction.emoji) in ["▶", "◀"] and reaction.message.id == message.id
 
         while True:
             try:

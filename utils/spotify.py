@@ -16,7 +16,7 @@ class Spotify:
         response = requests.get("https://open.spotify.com/get_access_token?reason=transport&productType=web_player")
 
         if response.status_code != 200:
-            print("Failed to get access code")
+            print("Failed to get spotify access code")
             return None
 
         response_json = response.json()
@@ -43,5 +43,22 @@ class Spotify:
         })
 
         if response.status_code == 200:
-            return response.json()
+            response_json = response.json()
+
+            while len(response_json["items"]) < response_json["total"]:
+                next_response = requests.get(f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks", params={
+                    "offset": len(response_json["items"]),
+                    "limit": "100",
+                    "additional_types": "track,episode"
+                }, headers={
+                    "authorization": f"Bearer {token}"
+                })
+
+                if next_response.status_code != 200:
+                    break
+
+                next_response_json = next_response.json()
+                response_json["items"].extend(next_response_json["items"])
+
+            return response_json
         return None

@@ -91,7 +91,7 @@ class Queue:
         self.loop_on = False
         # Stores a duplicate copy of self.songs in order to loop
         self.loop_songs = None
-        self.cache = False
+        self.cache = True
 
     async def create_player(self, song: Union[Song, UnloadedSong]):
         # If the song is unloaded, load it
@@ -114,15 +114,18 @@ class Queue:
             player, filename = await self.create_player(song)
 
             def after(e=None):
+                # Cleans up any files ytdl has left behind
+                if not filename.startswith("http"):
+                    os.remove(filename)
+
+                if voice_client is None:
+                    return
+
                 # adds the last played song to the loop queue if loop is on
                 if self.loop_on:
                     self.loop_songs.append(self.playing)
 
                 self.playing = None
-
-                # Cleans up any files ytdl has left behind
-                if not filename.startswith("http"):
-                    os.remove(filename)
 
                 if e is not None:
                     print(f"An error occurred while playing: {e}")
@@ -245,6 +248,7 @@ class Music(commands.Cog):
             return
 
         await user_voice_state.channel.connect()
+        await self.queues[ctx.guild].play_if_stopped(ctx.guild.voice_client)
 
     @commands.command(aliases=["nextsearch", "searchnext"])
     async def search(self, ctx: discord.ext.commands.Context):
@@ -364,7 +368,8 @@ class Music(commands.Cog):
             return
 
         queue_readable = [f"{i+1}. `{song.duration}` {song.name}" for i, song in enumerate(queue.songs)]
-        await BotUtils.pagination_reaction_menu(ctx, self.bot, queue_readable, 10, "Song queue:")
+        queue_footer = "      " + (":white_check_mark: repeat on" if queue.loop_on else ":x: repeat off")
+        await BotUtils.pagination_reaction_menu(ctx, self.bot, queue_readable, 10, "Song queue:", queue_footer)
 
     @commands.command(aliases=["queueclear"])
     async def clearqueue(self, ctx: discord.ext.commands.Context):
@@ -402,8 +407,8 @@ class Music(commands.Cog):
         self.queues[ctx.guild].shuffle()
         await ctx.send(f":twisted_rightwards_arrows: Shuffled the queue")
 
-    @commands.command(aliases=["repeat"])
-    async def loop(self, ctx):
+    @commands.command(aliases=["loop"])
+    async def repeat(self, ctx):
         """puts the queue on loop"""
         queue = self.queues[ctx.guild]
         if queue.loop_on:

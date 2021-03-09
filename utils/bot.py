@@ -59,6 +59,7 @@ class BotUtils(commands.Cog):
             try:
                 reaction, sender = await bot.wait_for('reaction_add', timeout=timeout, check=check)
             except asyncio.TimeoutError:
+                await message.clear_reactions()
                 return
             else:
                 if str(reaction.emoji) == "▶":

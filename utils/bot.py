@@ -30,7 +30,7 @@ class BotUtils(commands.Cog):
             return to_number(reaction.emoji), sender
 
     @staticmethod
-    async def pagination_reaction_menu(ctx, bot, item_list: list, page_length: int, prefix: str = None, timeout: str = 60):
+    async def pagination_reaction_menu(ctx, bot, item_list: list, page_length: int, prefix: str = "", footer: str = "", timeout: str = 60):
         """Makes a paginated message controlled by reactions"""
         page = 1
         max_page = math.ceil(len(item_list) / page_length)
@@ -39,9 +39,7 @@ class BotUtils(commands.Cog):
         def render_page():
             last_item = page * page_length
             page_list = "\n".join(item_list[last_item - page_length:last_item])
-            if prefix is not None:
-                return f"{prefix}\n{page_list}"
-            return page_list
+            return f"{prefix}\n{page_list}\n{footer}"
 
         message = await ctx.send(render_page())
 

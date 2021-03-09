@@ -11,9 +11,9 @@ currently not implemented.
 - Clean, commented, and easy to understand code
 - Built in config file that is easily modifiable and has easy to write type conversions for less verbose config calls
 - Useful already built in functions in utils folder
-- Built in basic commands, such as ping, help, ~~and common admin commands~~
+- Built in basic commands, such as ping, ~~help, and common admin commands~~
 - Auto generating help text for failed commands showing intended syntax
-- ~~Built in song bot functionality, because it's never a complete bot without music and it's a pain of a feature to add~~
+- Built in song bot functionality, because it's never a complete bot without music and it's a pain of a feature to add
 - ~~Built in per-user sql lite database, so you can easily store user to user data~~
 
 ## Dependencies

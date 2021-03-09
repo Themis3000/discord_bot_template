@@ -10,4 +10,4 @@ discord_presence:
       type: game
     status: idle
 essentials:
-  command_prefix: "!"
+  command_prefix: "?"

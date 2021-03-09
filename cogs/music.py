@@ -37,7 +37,7 @@ ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 
 
 class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, source, *, data, volume=0.5):
+    def __init__(self, source, *, data, volume=0.6):
         super().__init__(source, volume)
 
         self.data = data
@@ -88,6 +88,9 @@ class Queue:
         self.songs = deque()
         self.bot = bot
         self.playing = None
+        self.loop_on = False
+        # Stores a duplicate copy of self.songs in order to loop
+        self.loop_songs = None
 
     async def create_player(self, song: Union[Song, UnloadedSong]):
         # If the song is unloaded, load it
@@ -98,18 +101,31 @@ class Queue:
     async def execute_queue_loop(self, voice_client):
         """Loop that executes it's way through the queue, playing every song"""
 
-        if self.__len__() > 0 and voice_client is not None:
+        if voice_client is None:
+            return
+
+        # puts stored queue history back into the queue if queue is over and loop is on
+        if self.__len__() == 0 and self.loop_on:
+            self.songs = self.loop_songs
+
+        if self.__len__() > 0:
             song = self.pop_left()
             player, filename = await self.create_player(song)
 
             def after(e=None):
+                # adds the last played song to the loop queue if loop is on
+                if self.loop_on:
+                    self.loop_songs.append(self.playing)
+
                 self.playing = None
 
+                # Cleans up any files ytdl has left behind
                 if not filename.startswith("http"):
                     os.remove(filename)
 
                 if e is not None:
                     print(f"An error occurred while playing: {e}")
+
                 coro = self.execute_queue_loop(voice_client)
                 fut = asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
                 try:
@@ -141,6 +157,15 @@ class Queue:
         song_list = list(self.songs)
         random.shuffle(song_list)
         self.songs = deque(song_list)
+
+    def song_loop(self, set_looping=True):
+        if not set_looping:
+            self.loop_on = False
+            self.loop_songs = None
+            return
+
+        self.loop_on = True
+        self.loop_songs = deque()
 
     def __len__(self) -> int:
         """Gets the item length of the queue (as opposed to time length)"""
@@ -183,23 +208,6 @@ class Music(commands.Cog):
         self.bot = bot
         self.queues = Queues(bot)
 
-    @commands.command()
-    async def join(self, ctx: discord.ext.commands.Context):
-        """Joins a voice channel"""
-        user_voice_state = ctx.author.voice
-
-        # if the sender is in a voice channel
-        if user_voice_state is None:
-            await ctx.send("You must be in a voice channel")
-            return
-
-        # if the bot is in a voice channel and the bot is not in the same voice channel as the user
-        if ctx.voice_client is not None and ctx.voice_client.channel != user_voice_state.channel:
-            await ctx.voice_client.move_to(user_voice_state.channel)
-            return
-
-        await user_voice_state.channel.connect()
-
     @staticmethod
     async def searching_message(ctx: discord.ext.commands.Context, query: str) -> discord.Message:
         """Sends the universally used discord message specifying that the bot is searching"""
@@ -219,6 +227,23 @@ class Music(commands.Cog):
     @staticmethod
     def get_query(ctx: discord.ext.commands.Context) -> str:
         return ctx.message.content[len(ctx.invoked_with) + 2:]
+
+    @commands.command()
+    async def join(self, ctx: discord.ext.commands.Context):
+        """Joins a voice channel"""
+        user_voice_state = ctx.author.voice
+
+        # if the sender is in a voice channel
+        if user_voice_state is None:
+            await ctx.send("You must be in a voice channel")
+            return
+
+        # if the bot is in a voice channel and the bot is not in the same voice channel as the user
+        if ctx.voice_client is not None and ctx.voice_client.channel != user_voice_state.channel:
+            await ctx.voice_client.move_to(user_voice_state.channel)
+            return
+
+        await user_voice_state.channel.connect()
 
     @commands.command(aliases=["nextsearch", "searchnext"])
     async def search(self, ctx: discord.ext.commands.Context):
@@ -252,6 +277,11 @@ class Music(commands.Cog):
     async def play(self, ctx: discord.ext.commands.Context):
         """Plays a song from youtube"""
         query = self.get_query(ctx)
+
+        if query == "":
+            await ctx.invoke(self.bot.get_command("resume"))
+            return
+
         add_to_start = ctx.invoked_with in ["nextplay", "playnext"]
 
         message = await self.searching_message(ctx, query)
@@ -275,6 +305,9 @@ class Music(commands.Cog):
         # handles for when a spotify playlist is passed in
         if query.startswith("https://open.spotify.com/playlist/"):
             playlist = spotify.get_playlist_tracks(query)["items"]
+
+            if playlist is None:
+                return
 
             if add_to_start:
                 playlist.reverse()
@@ -356,7 +389,7 @@ class Music(commands.Cog):
         ctx.voice_client.stop()
         await ctx.send(":track_next: Skipped this song")
 
-    @commands.command()
+    @commands.command(aliases=["nowplaying", "playingnow"])
     async def playing(self, ctx):
         """Tells what song is currently playing"""
         song = self.queues[ctx.guild].playing
@@ -367,6 +400,17 @@ class Music(commands.Cog):
         """shuffles the queue"""
         self.queues[ctx.guild].shuffle()
         await ctx.send(f":twisted_rightwards_arrows: Shuffled the queue")
+
+    @commands.command(aliases=["repeat"])
+    async def loop(self, ctx):
+        """puts the queue on loop"""
+        queue = self.queues[ctx.guild]
+        if queue.loop_on:
+            queue.song_loop(False)
+            await ctx.send(":pause_button: Loop disabled")
+            return
+        queue.song_loop()
+        await ctx.send(":repeat: Looping queue")
 
 
 def setup(bot):

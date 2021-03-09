@@ -91,12 +91,13 @@ class Queue:
         self.loop_on = False
         # Stores a duplicate copy of self.songs in order to loop
         self.loop_songs = None
+        self.cache = False
 
     async def create_player(self, song: Union[Song, UnloadedSong]):
         # If the song is unloaded, load it
         if isinstance(song, UnloadedSong):
             song = song.load_song()
-        return await YTDLSource.from_url(song.url, loop=self.bot.loop, stream=True)
+        return await YTDLSource.from_url(song.url, loop=self.bot.loop, stream=not self.cache)
 
     async def execute_queue_loop(self, voice_client):
         """Loop that executes it's way through the queue, playing every song"""
@@ -411,6 +412,16 @@ class Music(commands.Cog):
             return
         queue.song_loop()
         await ctx.send(":repeat: Looping queue")
+
+    @commands.command()
+    async def cache(self, ctx):
+        self.queues[ctx.guild].cache = True
+        await ctx.send(":white_check_mark: Bot is now in cache mode")
+
+    @commands.command()
+    async def stream(self, ctx):
+        self.queues[ctx.guild].cache = False
+        await ctx.send(":white_check_mark: Bot is now in stream mode")
 
 
 def setup(bot):

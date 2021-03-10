@@ -13,7 +13,7 @@ currently not implemented.
 - Useful already built in functions in utils folder
 - Built in basic commands, such as ping, ~~help, and common admin commands~~
 - Auto generating help text for failed commands showing intended syntax
-- Built in song bot functionality, because it's never a complete bot without music and it's a pain of a feature to add
+- Built in song bot functionality, because it's never a complete bot without music and it's a pain of a feature to add. Includes support for searching youtube, adding spotify/youtube playlists, and all the little things you'd expect like shuffle, repeat, play, pause, etc
 - ~~Built in per-user sql lite database, so you can easily store user to user data~~
 
 ## Dependencies
@@ -31,6 +31,7 @@ currently not implemented.
 `import os`  
 `os.environ["TOKEN"] = (your token here)`
 Running main.py should now successfully start up your discord bot
+Music bot functionality requires additionally installing ffmpeg
 
 ## Inviting your bot to your server
 1. Under your application at https://discord.com/developers/applications, navigate to the `OAuth2` section

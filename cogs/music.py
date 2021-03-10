@@ -171,6 +171,10 @@ class Queue:
         self.loop_on = True
         self.loop_songs = deque()
 
+    def clear_queue(self):
+        self.songs = deque()
+        self.loop_songs = deque()
+
     def __len__(self) -> int:
         """Gets the item length of the queue (as opposed to time length)"""
         return len(self.songs)
@@ -322,7 +326,7 @@ class Music(commands.Cog):
                 song_name = track["name"]
                 duration = convert_millis_readable(int(track["duration_ms"]))
                 artist = track["artists"][0]["name"]
-                yt_query = f"{artist} {song_name}"
+                yt_query = f"{artist} {song_name} song"
                 unloaded_song = UnloadedSong(song_name, duration, yt_query, ctx.author)
                 await self.queue_and_unpause(ctx.guild, unloaded_song, add_to_start)
 
@@ -374,7 +378,7 @@ class Music(commands.Cog):
     @commands.command(aliases=["queueclear"])
     async def clearqueue(self, ctx: discord.ext.commands.Context):
         """Clears a guild's queue"""
-        self.queues.remove_queue(ctx.guild)
+        self.queues[ctx.guild].clear_queue()
         await ctx.send(":white_check_mark: Cleared the queue")
 
     @commands.command(aliases=["leave"])
@@ -399,6 +403,8 @@ class Music(commands.Cog):
     async def playing(self, ctx):
         """Tells what song is currently playing"""
         song = self.queues[ctx.guild].playing
+        if song is None:
+            await ctx.send(f"There is no songs currently playing")
         await ctx.send(f"Currently playing `{song.name}` ({song.duration})")
 
     @commands.command(aliases=["mixitupinherebro"])
@@ -427,6 +433,21 @@ class Music(commands.Cog):
     async def stream(self, ctx):
         self.queues[ctx.guild].cache = False
         await ctx.send(":white_check_mark: Bot is now in stream mode")
+
+    @commands.command(aliases=["grabsong", "songgrab"])
+    async def grab(self, ctx):
+        song = self.queues[ctx.guild].playing
+        if song is None:
+            await ctx.send("There is no song currently playing")
+
+        try:
+            await ctx.author.send(f"{song.name} - {song.url}")
+        except discord.Forbidden:
+            await ctx.send(":x: I couldn't send you a message, this is probably because your dm's are closed to server members")
+        except Exception:
+            await ctx.send(":x: Sending message failed")
+        else:
+            await ctx.send(f":white_check_mark: Sent `{song.name}` to your dm")
 
 
 def setup(bot):
